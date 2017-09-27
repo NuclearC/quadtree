@@ -1,7 +1,7 @@
 // ================================= //
 //                                   //
 // QuadTree Version 0.1a             //
-// Copyright (c)2017 NuclearC        //
+// Copyright (c) 2017 NuclearC       //
 //                                   //
 // ================================= //
 
@@ -9,8 +9,6 @@
 
 #ifndef NC_QUADTREE_H_
 #define NC_QUADTREE_H_
-
-#include <vector>
 
 namespace nc {
     template <typename T>
@@ -40,7 +38,8 @@ namespace nc {
         }
 
         bool contains(T _X, T _Y) const {
-            return ((_X > left) && (_X < right) && (_Y > top) && (_Y < bottom));
+            return ((_X > left) && (_X < right) 
+                && (_Y > top) && (_Y < bottom));
         }
     };
 
@@ -85,6 +84,9 @@ namespace nc {
         QuadTree(const QuadTreeAABB<T>& _Bounds) : bounds(_Bounds) {
             objects = new QuadTreeObject<T>[_Capacity];
             has_children = false;
+
+            for (size_t i = 0; i < _Capacity; i++)
+                objects[i].removed = true;
         }
 
         ~QuadTree() {
@@ -102,7 +104,8 @@ namespace nc {
         bool insert(const QuadTreeObject<T>& _Object);
         bool remove(const QuadTreeObject<T>& _Object);
 
-        void query(const QuadTreeAABB<T>& _Boundaries, QuadTreeObject<T>* _Objects, size_t& _Length) const;
+        void query(const QuadTreeAABB<T>& _Boundaries,
+            QuadTreeObject<T>* _Objects, size_t& _Length) const;
 
         bool has_children_() const { return has_children; }
 
@@ -188,11 +191,11 @@ namespace nc {
                 if (!has_children)
                     split();
 
-                if (!children[0].insert(_Object))
-                    if (!children[1].insert(_Object))
-                        if (!children[2].insert(_Object))
-                            if (!children[3].insert(_Object))
-                                throw std::out_of_range("object position out of range");
+                if (!children[0].insert(_Object) 
+                    && !children[1].insert(_Object) 
+                    && !children[2].insert(_Object) 
+                    && !children[3].insert(_Object))
+                    throw std::out_of_range("object position out of range");
 
                 return true;
             }
@@ -231,11 +234,11 @@ namespace nc {
             }
             
             if (has_children) {
-                if (!children[0].remove(_Object))
-                    if (!children[1].remove(_Object))
-                        if (!children[2].remove(_Object))
-                            if (!children[3].remove(_Object))
-                                return false;
+                if (!children[0].remove(_Object) 
+                    && !children[1].remove(_Object)
+                    && !children[2].remove(_Object)
+                    && !children[3].remove(_Object))
+                    return false;
 
                 return true;
             }
@@ -247,21 +250,23 @@ namespace nc {
     }
 
     template<typename T, size_t _Capacity>
-    inline void QuadTree<T, _Capacity>::query(const QuadTreeAABB<T>& _Boundaries, QuadTreeObject<T>* _Objects, size_t& _Length) const
+    inline void QuadTree<T, _Capacity>::query(const QuadTreeAABB<T>& _Bounds, 
+        QuadTreeObject<T>* _Objects, size_t& _Length) const
     {
-        if (bounds.intersects(_Boundaries)) {
+        if (bounds.intersects(_Bounds)) {
             if (has_children) {
-                children[0].query(_Boundaries, _Objects, _Length);
-                children[1].query(_Boundaries, _Objects, _Length);
-                children[2].query(_Boundaries, _Objects, _Length);
-                children[3].query(_Boundaries, _Objects, _Length);
+                children[0].query(_Bounds, _Objects, _Length);
+                children[1].query(_Bounds, _Objects, _Length);
+                children[2].query(_Bounds, _Objects, _Length);
+                children[3].query(_Bounds, _Objects, _Length);
             }
 
             if (object_count < 1)
                 return;
 
             for (size_t i = 0; i < _Capacity; i++) {
-                if (!objects[i].removed && objects[i].bounds.intersects(_Boundaries)) {
+                if (!objects[i].removed 
+                    && objects[i].bounds.intersects(_Bounds)) {
                     _Objects[_Length++] = objects[i];
                 }
             }
