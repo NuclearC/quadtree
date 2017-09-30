@@ -10,6 +10,8 @@
 #ifndef NC_QUADTREE_H_
 #define NC_QUADTREE_H_
 
+#include <vector>
+
 namespace nc {
     template <typename T>
     struct QuadTreeAABB {
@@ -106,6 +108,8 @@ namespace nc {
 
         void query(const QuadTreeAABB<T>& _Boundaries,
             QuadTreeObject<T>* _Objects, size_t& _Length) const;
+        void query(const QuadTreeAABB<T>& _Boundaries,
+            std::vector<QuadTreeObject<T>>& _Objects) const;
 
         bool has_children_() const { return has_children; }
 
@@ -268,6 +272,30 @@ namespace nc {
                 if (!objects[i].removed 
                     && objects[i].bounds.intersects(_Bounds)) {
                     _Objects[_Length++] = objects[i];
+                }
+            }
+        }
+    }
+
+    template<typename T, size_t _Capacity>
+    inline void QuadTree<T, _Capacity>::query(const QuadTreeAABB<T>& _Bounds,
+        std::vector<QuadTreeObject<T>>& _Objects) const
+    {
+        if (bounds.intersects(_Bounds)) {
+            if (has_children) {
+                children[0].query(_Bounds, _Objects);
+                children[1].query(_Bounds, _Objects);
+                children[2].query(_Bounds, _Objects);
+                children[3].query(_Bounds, _Objects);
+            }
+
+            if (object_count < 1)
+                return;
+
+            for (size_t i = 0; i < _Capacity; i++) {
+                if (!objects[i].removed
+                    && objects[i].bounds.intersects(_Bounds)) {
+                    _Objects.push_back(objects[i]);
                 }
             }
         }
