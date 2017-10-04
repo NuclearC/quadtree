@@ -19,9 +19,13 @@ namespace nc {
         T left, top, right, bottom;
         // center
         T x, y;
+        // dimensions
+        T width, height;
 
-        const T& get_width() const { return right - left; }
-        const T& get_height() const { return bottom - top; }
+        void set_dimensions() {
+            width = bottom - top;
+            height = right - left;
+        }
 
         void set_center() {
             x = (left + right) / (T)2;
@@ -33,10 +37,10 @@ namespace nc {
         }
 
         bool intersects(const QuadTreeAABB<T>& _Other) const {
-            return (left < _Other.left + (_Other.right - _Other.left) &&
-                left + (right - left) > _Other.left &&
-                top < _Other.top + (_Other.bottom - _Other.top) &&
-                (bottom - top) + top > _Other.top);
+            return (left < _Other.left + _Other.width &&
+                left + width > _Other.left &&
+                top < _Other.top + _Other.height &&
+                height + top > _Other.top);
         }
 
         bool contains(T _X, T _Y) const {
@@ -76,6 +80,8 @@ namespace nc {
         size_t level = 1;
     public:
         QuadTree() {
+            level = 0;
+
             objects = new QuadTreeObject<T>[_Capacity];
             has_children = false;
 
@@ -84,6 +90,8 @@ namespace nc {
         }
 
         QuadTree(const QuadTreeAABB<T>& _Bounds) : bounds(_Bounds) {
+            level = 0;
+
             objects = new QuadTreeObject<T>[_Capacity];
             has_children = false;
 
@@ -131,28 +139,36 @@ namespace nc {
             child_aabb.right = bounds.x;
             child_aabb.bottom = bounds.y;
             child_aabb.set_center();
+            child_aabb.set_dimensions();
             children[0].set_bounds(child_aabb);
+            children[0].level = level + 1;
             // top right
             child_aabb.left = bounds.x;
             child_aabb.top = bounds.top;
             child_aabb.right = bounds.right;
             child_aabb.bottom = bounds.y;
             child_aabb.set_center();
+            child_aabb.set_dimensions();
             children[1].set_bounds(child_aabb);
+            children[1].level = level + 1;
             // bottom right
             child_aabb.left = bounds.x;
             child_aabb.top = bounds.y;
             child_aabb.right = bounds.right;
             child_aabb.bottom = bounds.bottom;
             child_aabb.set_center();
+            child_aabb.set_dimensions();
             children[2].set_bounds(child_aabb);
+            children[2].level = level + 1;
             // bottom left
             child_aabb.left = bounds.left;
             child_aabb.top = bounds.y;
             child_aabb.right = bounds.x;
             child_aabb.bottom = bounds.bottom;
             child_aabb.set_center();
+            child_aabb.set_dimensions();
             children[3].set_bounds(child_aabb);
+            children[3].level = level + 1;
 
             has_children = true;
         }
