@@ -37,10 +37,10 @@ namespace nc {
         }
 
         bool intersects(const QuadTreeAABB<T>& _Other) const {
-            return (left < _Other.left + _Other.width &&
-                left + width > _Other.left &&
-                top < _Other.top + _Other.height &&
-                height + top > _Other.top);
+            return (left < _Other.right &&
+                right > _Other.left &&
+                top < _Other.bottom &&
+                bottom > _Other.top);
         }
 
         bool contains(T _X, T _Y) const {
