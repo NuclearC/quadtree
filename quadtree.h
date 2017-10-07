@@ -115,9 +115,11 @@ namespace nc {
         bool remove(const QuadTreeObject<T>& _Object);
 
         void query(const QuadTreeAABB<T>& _Boundaries,
-            QuadTreeObject<T>* _Objects, size_t& _Length) const;
+            QuadTreeObject<T>* _Objects, size_t& _Length,
+            bool _BoundChecks = true) const;
         void query(const QuadTreeAABB<T>& _Boundaries,
-            std::vector<QuadTreeObject<T>>& _Objects) const;
+            std::vector<QuadTreeObject<T>>& _Objects,
+            bool _BoundChecks = true) const;
 
         bool has_children_() const { return has_children; }
 
@@ -271,14 +273,14 @@ namespace nc {
 
     template<typename T, size_t _Capacity>
     inline void QuadTree<T, _Capacity>::query(const QuadTreeAABB<T>& _Bounds, 
-        QuadTreeObject<T>* _Objects, size_t& _Length) const
+        QuadTreeObject<T>* _Objects, size_t& _Length, bool _BoundChecks) const
     {
-        if (bounds.intersects(_Bounds)) {
+        if (bounds.intersects(_Bounds) || !_BoundChecks) {
             if (has_children) {
-                children[0].query(_Bounds, _Objects, _Length);
-                children[1].query(_Bounds, _Objects, _Length);
-                children[2].query(_Bounds, _Objects, _Length);
-                children[3].query(_Bounds, _Objects, _Length);
+                children[0].query(_Bounds, _Objects, _Length, _BoundChecks);
+                children[1].query(_Bounds, _Objects, _Length, _BoundChecks);
+                children[2].query(_Bounds, _Objects, _Length, _BoundChecks);
+                children[3].query(_Bounds, _Objects, _Length, _BoundChecks);
             }
 
             if (object_count < 1)
@@ -295,14 +297,14 @@ namespace nc {
 
     template<typename T, size_t _Capacity>
     inline void QuadTree<T, _Capacity>::query(const QuadTreeAABB<T>& _Bounds,
-        std::vector<QuadTreeObject<T>>& _Objects) const
+        std::vector<QuadTreeObject<T>>& _Objects, bool _BoundChecks) const
     {
-        if (bounds.intersects(_Bounds)) {
+        if (bounds.intersects(_Bounds) || !_BoundChecks) {
             if (has_children) {
-                children[0].query(_Bounds, _Objects);
-                children[1].query(_Bounds, _Objects);
-                children[2].query(_Bounds, _Objects);
-                children[3].query(_Bounds, _Objects);
+                children[0].query(_Bounds, _Objects, _BoundChecks);
+                children[1].query(_Bounds, _Objects, _BoundChecks);
+                children[2].query(_Bounds, _Objects, _BoundChecks);
+                children[3].query(_Bounds, _Objects, _BoundChecks);
             }
 
             if (object_count < 1)
