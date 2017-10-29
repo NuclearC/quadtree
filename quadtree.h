@@ -11,6 +11,7 @@
 #define NC_QUADTREE_H_
 
 #include <vector>
+#include <memory>
 
 namespace nc {
     template <typename T>
@@ -61,7 +62,8 @@ namespace nc {
     };
 
     template <typename T = double, size_t _Capacity = 2>
-    class QuadTree {
+    class QuadTree 
+        : public std::enable_shared_from_this<QuadTree<T,_Capacity>> {
     private:
         static constexpr size_t kChildren = 4;
 
@@ -70,7 +72,9 @@ namespace nc {
 
         size_t object_count = 0;
         std::vector<QuadTreeObject<T>> objects;
-        std::vector<QuadTree> children;
+        std::vector<std::shared_ptr<QuadTree<T,_Capacity>>> children;
+        std::shared_ptr<QuadTree<T, _Capacity>> root;
+
         bool has_children = false;
 
         void split();
@@ -125,7 +129,7 @@ namespace nc {
 
         bool has_children_() const { return has_children; }
 
-        const QuadTree* get_children() const { return children.data(); }
+        const std::vector<std::shared_ptr<QuadTree<T, _Capacity>>>& get_children() const { return children; }
 
         size_t get_total_objects() const;
     };
@@ -144,8 +148,9 @@ namespace nc {
             child_aabb.bottom = bounds.y;
             child_aabb.set_center();
             child_aabb.set_dimensions();
-            children[0].set_bounds(child_aabb);
-            children[0].level = level + 1;
+            children[0] = std::make_shared<QuadTree<T, _Capacity>>(child_aabb);
+            children[0]->level = level + 1;
+            children[0]->root = shared_from_this();
             // top right
             child_aabb.left = bounds.x;
             child_aabb.top = bounds.top;
@@ -153,8 +158,10 @@ namespace nc {
             child_aabb.bottom = bounds.y;
             child_aabb.set_center();
             child_aabb.set_dimensions();
-            children[1].set_bounds(child_aabb);
-            children[1].level = level + 1;
+            children[1] = std::make_shared<QuadTree<T, _Capacity>>(child_aabb);
+            children[1]->set_bounds(child_aabb);
+            children[1]->level = level + 1;
+            children[1]->root = shared_from_this();
             // bottom right
             child_aabb.left = bounds.x;
             child_aabb.top = bounds.y;
@@ -162,8 +169,10 @@ namespace nc {
             child_aabb.bottom = bounds.bottom;
             child_aabb.set_center();
             child_aabb.set_dimensions();
-            children[2].set_bounds(child_aabb);
-            children[2].level = level + 1;
+            children[2] = std::make_shared<QuadTree<T, _Capacity>>(child_aabb);
+            children[2]->set_bounds(child_aabb);
+            children[2]->level = level + 1;
+            children[2]->root = shared_from_this();
             // bottom left
             child_aabb.left = bounds.left;
             child_aabb.top = bounds.y;
@@ -171,8 +180,10 @@ namespace nc {
             child_aabb.bottom = bounds.bottom;
             child_aabb.set_center();
             child_aabb.set_dimensions();
-            children[3].set_bounds(child_aabb);
-            children[3].level = level + 1;
+            children[3] = std::make_shared<QuadTree<T, _Capacity>>(child_aabb);
+            children[3]->set_bounds(child_aabb);
+            children[3]->level = level + 1;
+            children[3]->root = shared_from_this();
 
             has_children = true;
         }
@@ -182,10 +193,10 @@ namespace nc {
     inline void QuadTree<T, _Capacity>::merge()
     {
         if (has_children) {
-            children[0].merge();
-            children[1].merge();
-            children[2].merge();
-            children[3].merge();
+            children[0]->merge();
+            children[1]->merge();
+            children[2]->merge();
+            children[3]->merge();
 
             children.clear();
 
@@ -197,10 +208,10 @@ namespace nc {
     inline void QuadTree<T, _Capacity>::remove_empty_nodes()
     {
         if (has_children) {
-            children[0].remove_empty_nodes();
-            children[1].remove_empty_nodes();
-            children[2].remove_empty_nodes();
-            children[3].remove_empty_nodes();
+            children[0]->remove_empty_nodes();
+            children[1]->remove_empty_nodes();
+            children[2]->remove_empty_nodes();
+            children[3]->remove_empty_nodes();
 
             if (get_total_objects() < 1)
                 merge();
@@ -227,15 +238,19 @@ namespace nc {
 
         if (has_children) {
             for (size_t i = 0; i < kChildren; i++) {
-                max_bounds.left = std::min(max_bounds.left, children[i].max_bounds.left);
-                max_bounds.top = std::min(max_bounds.top, children[i].max_bounds.top);
-                max_bounds.right = std::max(max_bounds.right, children[i].max_bounds.right);
-                max_bounds.bottom = std::max(max_bounds.bottom, children[i].max_bounds.bottom);
+                max_bounds.left = std::min(max_bounds.left, children[i]->max_bounds.left);
+                max_bounds.top = std::min(max_bounds.top, children[i]->max_bounds.top);
+                max_bounds.right = std::max(max_bounds.right, children[i]->max_bounds.right);
+                max_bounds.bottom = std::max(max_bounds.bottom, children[i]->max_bounds.bottom);
 
                 if (!max_bounds.verify()) {
                     max_bounds = bounds;
                 }
             }
+        }
+
+        if (root != nullptr) {
+            root->resolve_max_bounds();
         }
     }
 
@@ -247,10 +262,10 @@ namespace nc {
                 if (!has_children)
                     split();
 
-                if (!children[0].insert(_Object) 
-                    && !children[1].insert(_Object) 
-                    && !children[2].insert(_Object) 
-                    && !children[3].insert(_Object))
+                if (!children[0]->insert(_Object) 
+                    && !children[1]->insert(_Object)
+                    && !children[2]->insert(_Object)
+                    && !children[3]->insert(_Object))
                     throw std::out_of_range("object position out of range");
 
                 return true;
@@ -294,10 +309,10 @@ namespace nc {
             }
             
             if (has_children) {
-                if (!children[0].remove(_Object) 
-                    && !children[1].remove(_Object)
-                    && !children[2].remove(_Object)
-                    && !children[3].remove(_Object))
+                if (!children[0]->remove(_Object)
+                    && !children[1]->remove(_Object)
+                    && !children[2]->remove(_Object)
+                    && !children[3]->remove(_Object))
                     return false;
 
                 return true;
@@ -315,10 +330,10 @@ namespace nc {
     {
         if (max_bounds.intersects(_Bounds) || !_BoundChecks) {
             if (has_children) {
-                children[0].query(_Bounds, _Objects, _Length, _BoundChecks);
-                children[1].query(_Bounds, _Objects, _Length, _BoundChecks);
-                children[2].query(_Bounds, _Objects, _Length, _BoundChecks);
-                children[3].query(_Bounds, _Objects, _Length, _BoundChecks);
+                children[0]->query(_Bounds, _Objects, _Length, _BoundChecks);
+                children[1]->query(_Bounds, _Objects, _Length, _BoundChecks);
+                children[2]->query(_Bounds, _Objects, _Length, _BoundChecks);
+                children[3]->query(_Bounds, _Objects, _Length, _BoundChecks);
             }
 
             if (object_count < 1)
@@ -339,10 +354,10 @@ namespace nc {
     {
         if (bounds.intersects(_Bounds) || !_BoundChecks) {
             if (has_children) {
-                children[0].query(_Bounds, _Objects, _BoundChecks);
-                children[1].query(_Bounds, _Objects, _BoundChecks);
-                children[2].query(_Bounds, _Objects, _BoundChecks);
-                children[3].query(_Bounds, _Objects, _BoundChecks);
+                children[0]->query(_Bounds, _Objects, _BoundChecks);
+                children[1]->query(_Bounds, _Objects, _BoundChecks);
+                children[2]->query(_Bounds, _Objects, _BoundChecks);
+                children[3]->query(_Bounds, _Objects, _BoundChecks);
             }
 
             if (object_count < 1)
@@ -363,10 +378,10 @@ namespace nc {
         size_t obj_count = object_count;
 
         if (has_children) {
-            obj_count += children[0].get_total_objects() +
-                children[1].get_total_objects() +
-                children[2].get_total_objects() +
-                children[3].get_total_objects();
+            obj_count += children[0]->get_total_objects() +
+                children[1]->get_total_objects() +
+                children[2]->get_total_objects() +
+                children[3]->get_total_objects();
         }
 
         return obj_count;
