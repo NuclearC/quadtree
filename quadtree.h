@@ -66,10 +66,11 @@ namespace nc {
         static constexpr size_t kChildren = 4;
 
         QuadTreeAABB<T> bounds;
+        QuadTreeAABB<T> max_bounds;
 
         size_t object_count = 0;
-        QuadTreeObject<T>* objects;
-        QuadTree* children = nullptr;
+        std::vector<QuadTreeObject<T>> objects;
+        std::vector<QuadTree> children;
         bool has_children = false;
 
         void split();
@@ -82,7 +83,7 @@ namespace nc {
         QuadTree() {
             level = 0;
 
-            objects = new QuadTreeObject<T>[_Capacity];
+            objects.resize(_Capacity);
             has_children = false;
 
             for (size_t i = 0; i < _Capacity; i++)
@@ -92,7 +93,7 @@ namespace nc {
         QuadTree(const QuadTreeAABB<T>& _Bounds) : bounds(_Bounds) {
             level = 0;
 
-            objects = new QuadTreeObject<T>[_Capacity];
+            objects.resize(_Capacity);
             has_children = false;
 
             for (size_t i = 0; i < _Capacity; i++)
@@ -100,12 +101,13 @@ namespace nc {
         }
 
         ~QuadTree() {
-            delete[] objects;
         }
 
         void set_bounds(const QuadTreeAABB<T>& _Bounds) {
             bounds = _Bounds;
         }
+
+        void resolve_max_bounds();
 
         const QuadTreeAABB<T>& get_bounds() const {
             return bounds;
@@ -123,7 +125,7 @@ namespace nc {
 
         bool has_children_() const { return has_children; }
 
-        const QuadTree* get_children() const { return children; }
+        const QuadTree* get_children() const { return children.data(); }
 
         size_t get_total_objects() const;
     };
@@ -134,7 +136,7 @@ namespace nc {
         if (!has_children) {
             QuadTreeAABB<T> child_aabb;
 
-            children = new QuadTree[kChildren];
+            children.resize(kChildren);
             // top left
             child_aabb.left = bounds.left;
             child_aabb.top = bounds.top;
@@ -185,7 +187,7 @@ namespace nc {
             children[2].merge();
             children[3].merge();
 
-            delete[] children;
+            children.clear();
 
             has_children = false;
         }
@@ -202,6 +204,38 @@ namespace nc {
 
             if (get_total_objects() < 1)
                 merge();
+        }
+    }
+
+    template<typename T, size_t _Capacity>
+    inline void QuadTree<T, _Capacity>::resolve_max_bounds()
+    {
+        max_bounds = bounds;
+
+        for (size_t i = 0; i < _Capacity; i++) {
+            if (!objects[i].removed) {
+                max_bounds.left = std::min(bounds.left, objects[i].bounds.left);
+                max_bounds.top = std::min(bounds.top, objects[i].bounds.top);
+                max_bounds.right = std::max(bounds.right, objects[i].bounds.right);
+                max_bounds.bottom = std::max(bounds.bottom, objects[i].bounds.bottom);
+
+                if (!max_bounds.verify()) {
+                    max_bounds = bounds;
+                }
+            }
+        }
+
+        if (has_children) {
+            for (size_t i = 0; i < kChildren; i++) {
+                max_bounds.left = std::min(max_bounds.left, children[i].max_bounds.left);
+                max_bounds.top = std::min(max_bounds.top, children[i].max_bounds.top);
+                max_bounds.right = std::max(max_bounds.right, children[i].max_bounds.right);
+                max_bounds.bottom = std::max(max_bounds.bottom, children[i].max_bounds.bottom);
+
+                if (!max_bounds.verify()) {
+                    max_bounds = bounds;
+                }
+            }
         }
     }
 
@@ -229,6 +263,8 @@ namespace nc {
                         objects[i].id = _Object.id;
                         objects[i].removed = false;
 
+                        resolve_max_bounds();
+
                         object_count++;
                         return true;
                     }
@@ -249,6 +285,8 @@ namespace nc {
                         objects[i].removed = true;
                         object_count--;
                         remove_empty_nodes();
+
+                        resolve_max_bounds();
 
                         return true;
                     }
@@ -275,7 +313,7 @@ namespace nc {
     inline void QuadTree<T, _Capacity>::query(const QuadTreeAABB<T>& _Bounds, 
         QuadTreeObject<T>* _Objects, size_t& _Length, bool _BoundChecks) const
     {
-        if (bounds.intersects(_Bounds) || !_BoundChecks) {
+        if (max_bounds.intersects(_Bounds) || !_BoundChecks) {
             if (has_children) {
                 children[0].query(_Bounds, _Objects, _Length, _BoundChecks);
                 children[1].query(_Bounds, _Objects, _Length, _BoundChecks);
