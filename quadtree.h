@@ -15,13 +15,62 @@
 
 namespace nc {
     template <typename T>
-    struct QuadTreeAABB {
+    class QuadTreeAABB {
+    public:
         // boundaries
         T left, top, right, bottom;
         // center
         T x, y;
         // dimensions
         T width, height;
+
+        QuadTreeAABB() {}
+        QuadTreeAABB(const QuadTreeAABB& _Other) :
+            left(_Other.left),
+            top(_Other.top),
+            right(_Other.right),
+            bottom(_Other.bottom),
+            x(_Other.x),
+            y(_Other.y),
+            width(_Other.width),
+            height(_Other.height) {
+        }
+
+        QuadTreeAABB(T _Left, T _Top, T _Right, T _Bottom,
+            T _CenterX, T _CenterY, T _Width, T _Height) :
+            left(_Left),
+            top(_Top),
+            right(_Right),
+            bottom(_Bottom),
+            x(_CenterX),
+            y(_CenterY),
+            width(_Width),
+            height(_Height) {
+
+        }
+
+        QuadTreeAABB(T _Left, T _Top, T _Right, T _Bottom,
+            T _CenterX, T _CenterY) :
+            left(_Left),
+            top(_Top),
+            right(_Right),
+            bottom(_Bottom),
+            x(_CenterX),
+            y(_CenterY) {
+            set_dimensions();
+        }
+
+        QuadTreeAABB(T _Left, T _Top, T _Right, T _Bottom) :
+            left(_Left),
+            top(_Top),
+            right(_Right),
+            bottom(_Bottom)
+        {
+            set_center();
+            set_dimensions();
+        }
+
+        ~QuadTreeAABB() {}
 
         void set_dimensions() {
             width = bottom - top;
@@ -51,14 +100,18 @@ namespace nc {
     };
 
     template <typename T>
-    struct QuadTreeObject {
+    class QuadTreeObject {
+    public:
+        QuadTreeObject() {}
+        QuadTreeObject(const QuadTreeAABB<T>& _Boundaries, void* _UserData, size_t _Id)
+            : bounds(_Boundaries), user_data(_UserData), id(_Id) {}
+        ~QuadTreeObject() {}
+
         QuadTreeAABB<T> bounds;
         void* user_data;
 
-        bool removed = true;
-
         // unique id used to remove the object later
-        size_t id = 0;
+        size_t id;
     };
 
     template <typename T = double, size_t _Capacity = 2>
@@ -71,7 +124,7 @@ namespace nc {
         QuadTreeAABB<T> max_bounds;
 
         size_t object_count = 0;
-        std::vector<QuadTreeObject<T>> objects;
+        std::vector<std::shared_ptr<QuadTreeObject<T>>> objects;
         std::vector<std::shared_ptr<QuadTree<T,_Capacity>>> children;
         std::shared_ptr<QuadTree<T, _Capacity>> root;
 
@@ -85,23 +138,21 @@ namespace nc {
         size_t level = 1;
     public:
         QuadTree() {
-            level = 0;
+            level = 1;
 
             objects.resize(_Capacity);
             has_children = false;
-
             for (size_t i = 0; i < _Capacity; i++)
-                objects[i].removed = true;
+                objects[i].reset();
         }
 
-        QuadTree(const QuadTreeAABB<T>& _Bounds) : bounds(_Bounds) {
-            level = 0;
+        QuadTree(const QuadTreeAABB<T>& _Bounds) : bounds(_Bounds), max_bounds(_Bounds) {
+            level = 1;
 
             objects.resize(_Capacity);
             has_children = false;
-
             for (size_t i = 0; i < _Capacity; i++)
-                objects[i].removed = true;
+                objects[i].reset();
         }
 
         ~QuadTree() {
@@ -109,6 +160,7 @@ namespace nc {
 
         void set_bounds(const QuadTreeAABB<T>& _Bounds) {
             bounds = _Bounds;
+            max_bounds = _Bounds;
         }
 
         void resolve_max_bounds();
@@ -117,14 +169,18 @@ namespace nc {
             return bounds;
         }
 
-        bool insert(const QuadTreeObject<T>& _Object);
-        bool remove(const QuadTreeObject<T>& _Object);
+        const QuadTreeAABB<T>& get_max_bounds() const {
+            return max_bounds;
+        }
+
+        bool insert(const std::shared_ptr<QuadTreeObject<T>>& _Object);
+        bool remove(const std::shared_ptr<QuadTreeObject<T>>& _Object);
 
         void query(const QuadTreeAABB<T>& _Boundaries,
-            QuadTreeObject<T>* _Objects, size_t& _Length,
+            std::shared_ptr<QuadTreeObject<T>>* _Objects, size_t& _Length,
             bool _BoundChecks = true) const;
         void query(const QuadTreeAABB<T>& _Boundaries,
-            std::vector<QuadTreeObject<T>>& _Objects,
+            std::vector<std::shared_ptr<QuadTreeObject<T>>>& _Objects,
             bool _BoundChecks = true) const;
 
         bool has_children_() const { return has_children; }
@@ -221,17 +277,17 @@ namespace nc {
     template<typename T, size_t _Capacity>
     inline void QuadTree<T, _Capacity>::resolve_max_bounds()
     {
-        max_bounds = bounds;
+        max_bounds = bounds; 
 
         for (size_t i = 0; i < _Capacity; i++) {
-            if (!objects[i].removed) {
-                max_bounds.left = std::min(bounds.left, objects[i].bounds.left);
-                max_bounds.top = std::min(bounds.top, objects[i].bounds.top);
-                max_bounds.right = std::max(bounds.right, objects[i].bounds.right);
-                max_bounds.bottom = std::max(bounds.bottom, objects[i].bounds.bottom);
+            if (objects[i]) {
+                max_bounds.left = std::min(max_bounds.left, objects[i]->bounds.left);
+                max_bounds.top = std::min(max_bounds.top, objects[i]->bounds.top);
+                max_bounds.right = std::max(max_bounds.right, objects[i]->bounds.right);
+                max_bounds.bottom = std::max(max_bounds.bottom, objects[i]->bounds.bottom);
 
                 if (!max_bounds.verify()) {
-                    max_bounds = bounds;
+                    throw std::exception("invalid bounds");
                 }
             }
         }
@@ -244,20 +300,22 @@ namespace nc {
                 max_bounds.bottom = std::max(max_bounds.bottom, children[i]->max_bounds.bottom);
 
                 if (!max_bounds.verify()) {
-                    max_bounds = bounds;
+                    throw std::exception("invalid bounds");
                 }
             }
         }
 
-        if (root != nullptr) {
+        max_bounds.set_center();
+        max_bounds.set_dimensions();
+        
+        if (root)
             root->resolve_max_bounds();
-        }
     }
 
     template<typename T, size_t _Capacity>
-    inline bool QuadTree<T, _Capacity>::insert(const QuadTreeObject<T>& _Object)
+    inline bool QuadTree<T, _Capacity>::insert(const std::shared_ptr<QuadTreeObject<T>>& _Object)
     {
-        if (bounds.intersects(_Object.bounds)) {
+        if (bounds.intersects(_Object->bounds)) {
             if (object_count >= _Capacity) {
                 if (!has_children)
                     split();
@@ -272,15 +330,12 @@ namespace nc {
             }
             else {
                 for (size_t i = 0; i < _Capacity; i++) {
-                    if (objects[i].removed) {
-                        objects[i].bounds = _Object.bounds;
-                        objects[i].user_data = _Object.user_data;
-                        objects[i].id = _Object.id;
-                        objects[i].removed = false;
-
-                        resolve_max_bounds();
+                    if (!objects[i]) {
+                        objects[i] = _Object;
 
                         object_count++;
+
+                        resolve_max_bounds();
                         return true;
                     }
                 }
@@ -291,13 +346,13 @@ namespace nc {
     }
 
     template<typename T, size_t _Capacity>
-    inline bool QuadTree<T, _Capacity>::remove(const QuadTreeObject<T>& _Object)
+    inline bool QuadTree<T, _Capacity>::remove(const std::shared_ptr<QuadTreeObject<T>>& _Object)
     {
-        if (bounds.intersects(_Object.bounds)) {
+        if (bounds.intersects(_Object->bounds)) {
             if (object_count > 0) {
                 for (size_t i = 0; i < _Capacity; i++) {
-                    if (!objects[i].removed && objects[i].id == _Object.id) {
-                        objects[i].removed = true;
+                    if (objects[i] && objects[i]->id == _Object->id) {
+                        objects[i].reset();
                         object_count--;
                         remove_empty_nodes();
 
@@ -326,7 +381,7 @@ namespace nc {
 
     template<typename T, size_t _Capacity>
     inline void QuadTree<T, _Capacity>::query(const QuadTreeAABB<T>& _Bounds, 
-        QuadTreeObject<T>* _Objects, size_t& _Length, bool _BoundChecks) const
+        std::shared_ptr<QuadTreeObject<T>>* _Objects, size_t& _Length, bool _BoundChecks) const
     {
         if (max_bounds.intersects(_Bounds) || !_BoundChecks) {
             if (has_children) {
@@ -340,8 +395,7 @@ namespace nc {
                 return;
 
             for (size_t i = 0; i < _Capacity; i++) {
-                if (!objects[i].removed 
-                    && objects[i].bounds.intersects(_Bounds)) {
+                if (objects[i] && objects[i]->bounds.intersects(_Bounds)) {
                     _Objects[_Length++] = objects[i];
                 }
             }
@@ -350,9 +404,9 @@ namespace nc {
 
     template<typename T, size_t _Capacity>
     inline void QuadTree<T, _Capacity>::query(const QuadTreeAABB<T>& _Bounds,
-        std::vector<QuadTreeObject<T>>& _Objects, bool _BoundChecks) const
+        std::vector<std::shared_ptr<QuadTreeObject<T>>>& _Objects, bool _BoundChecks) const
     {
-        if (bounds.intersects(_Bounds) || !_BoundChecks) {
+        if (max_bounds.intersects(_Bounds) || !_BoundChecks) {
             if (has_children) {
                 children[0]->query(_Bounds, _Objects, _BoundChecks);
                 children[1]->query(_Bounds, _Objects, _BoundChecks);
@@ -364,8 +418,7 @@ namespace nc {
                 return;
 
             for (size_t i = 0; i < _Capacity; i++) {
-                if (!objects[i].removed
-                    && objects[i].bounds.intersects(_Bounds)) {
+                if (objects[i] && objects[i]->bounds.intersects(_Bounds)) {
                     _Objects.push_back(objects[i]);
                 }
             }
